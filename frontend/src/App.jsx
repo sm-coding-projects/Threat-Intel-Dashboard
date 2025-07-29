@@ -1,12 +1,12 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import ApiKeyPage from './components/ApiKeyPage';
+import React, { useState, useEffect } from 'react';
 import DashboardPage from './components/DashboardPage';
+import SettingsPage from './components/SettingsPage';
 import { 
     CssBaseline, Container, Typography, createTheme, 
-    ThemeProvider, Box, AppBar, Toolbar 
+    ThemeProvider, Box, AppBar, Toolbar, Button 
 } from '@mui/material';
 import { blueGrey, grey } from '@mui/material/colors';
+import { Dashboard, Settings } from '@mui/icons-material';
 
 const darkTheme = createTheme({
     palette: {
@@ -62,12 +62,39 @@ const darkTheme = createTheme({
     }
 });
 
-const PrivateRoute = ({ children }) => {
-    const isAuthenticated = !!localStorage.getItem('apiKey');
-    return isAuthenticated ? children : <Navigate to="/" />;
-};
-
 function App() {
+    const [page, setPage] = useState('dashboard');
+    const [apiKey, setApiKey] = useState(localStorage.getItem('apiKey'));
+
+    useEffect(() => {
+        const key = localStorage.getItem('apiKey');
+        setApiKey(key);
+        if (!key) {
+            setPage('settings');
+        }
+    }, []);
+
+    const handleNavigation = (newPage) => {
+        setPage(newPage);
+    };
+    
+    // This effect will listen for changes in localStorage and update the apiKey state
+    useEffect(() => {
+        const handleStorageChange = () => {
+            const key = localStorage.getItem('apiKey');
+            setApiKey(key);
+            if (!key) {
+                setPage('settings');
+            }
+        };
+
+        window.addEventListener('storage', handleStorageChange);
+
+        return () => {
+            window.removeEventListener('storage', handleStorageChange);
+        };
+    }, []);
+
   return (
     <ThemeProvider theme={darkTheme}>
       <CssBaseline />
@@ -76,15 +103,25 @@ function App() {
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
             Threat Intel Platform
           </Typography>
+          <Button 
+              color="inherit" 
+              onClick={() => handleNavigation('dashboard')} 
+              disabled={!apiKey}
+              startIcon={<Dashboard />}
+          >
+              Dashboard
+          </Button>
+          <Button 
+              color="inherit" 
+              onClick={() => handleNavigation('settings')}
+              startIcon={<Settings />}
+          >
+              Settings
+          </Button>
         </Toolbar>
       </AppBar>
       <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
-        <Router>
-            <Routes>
-                <Route path="/" element={<ApiKeyPage />} />
-                <Route path="/dashboard" element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
-            </Routes>
-        </Router>
+        {page === 'dashboard' && apiKey ? <DashboardPage /> : <SettingsPage />}
       </Container>
     </ThemeProvider>
   );
