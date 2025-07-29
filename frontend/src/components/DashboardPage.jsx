@@ -1,0 +1,224 @@
+import React, { useState, useEffect } from 'react';
+import { getIPs, addIPsFromFile, addIPsFromText } from '../api';
+import { 
+    TextField, Button, Table, TableBody, TableCell, 
+    TableContainer, TableHead, TableRow, Paper, CircularProgress, 
+    Alert, Grid, Typography, Card, CardContent, Box,
+    Dialog, DialogTitle, DialogContent, DialogActions
+} from '@mui/material';
+import { CloudUpload, Send, Error, Visibility } from '@mui/icons-material';
+
+const DashboardPage = () => {
+    const [ips, setIps] = useState([]);
+    const [textInput, setTextInput] = useState('');
+    const [fileInput, setFileInput] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+    const [selectedIp, setSelectedIp] = useState(null);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+
+    const fetchIps = async () => {
+        try {
+            const response = await getIPs();
+            setIps(response.data);
+        } catch (error) {
+            console.error("Error fetching IPs:", error);
+            setError('Failed to fetch IPs. Please try again later.');
+        }
+    };
+
+    useEffect(() => {
+        fetchIps();
+    }, []);
+
+    const handleTextSubmit = async () => {
+        if (!textInput.trim()) return;
+        setLoading(true);
+        setError('');
+        try {
+            const response = await addIPsFromText(textInput);
+            setTextInput('');
+            fetchIps();
+            if (response.data.errors && response.data.errors.length > 0) {
+                setError(`Completed with some errors: ${response.data.errors.join(', ')}`);
+            }
+        } catch (err) {
+            console.error("Error submitting text IPs:", err);
+            const errorMessage = err.response?.data?.error || 'An unknown error occurred.';
+            setError(`Failed to submit IPs: ${errorMessage}`);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleFileChange = (e) => {
+        setFileInput(e.target.files[0]);
+    };
+
+    const handleFileSubmit = async () => {
+        if (!fileInput) return;
+        setLoading(true);
+        setError('');
+        try {
+            const response = await addIPsFromFile(fileInput);
+            setFileInput(null);
+            document.getElementById('file-input').value = null;
+            fetchIps();
+            if (response.data.errors && response.data.errors.length > 0) {
+                setError(`Completed with some errors: ${response.data.errors.join(', ')}`);
+            }
+        } catch (err) {
+            console.error("Error submitting file:", err);
+            const errorMessage = err.response?.data?.error || 'An unknown error occurred.';
+            setError(`Failed to submit IPs from file: ${errorMessage}`);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleViewDetails = (ip) => {
+        setSelectedIp(ip);
+        setIsModalOpen(true);
+    };
+
+    const handleCloseModal = () => {
+        setIsModalOpen(false);
+        setSelectedIp(null);
+    };
+
+    return (
+        <Box>
+            <Grid container spacing={3}>
+                <Grid item xs={12}>
+                    <Typography variant="h5" component="h1" gutterBottom>
+                        IP Enrichment
+                    </Typography>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                    <Card>
+                        <CardContent>
+                            <Typography variant="h6" gutterBottom>Add IPs from Text</Typography>
+                            <TextField
+                                label="Enter one IP per line"
+                                multiline
+                                rows={4}
+                                value={textInput}
+                                onChange={(e) => setTextInput(e.target.value)}
+                                fullWidth
+                                variant="outlined"
+                            />
+                            <Button 
+                                variant="contained" 
+                                color="primary"
+                                onClick={handleTextSubmit} 
+                                disabled={loading || !textInput.trim()} 
+                                sx={{ mt: 2 }}
+                                startIcon={<Send />}
+                            >
+                                {loading ? <CircularProgress size={24} color="inherit" /> : 'Submit'}
+                            </Button>
+                        </CardContent>
+                    </Card>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                    <Card>
+                        <CardContent>
+                            <Typography variant="h6" gutterBottom>Add IPs from File</Typography>
+                            <Button
+                                variant="outlined"
+                                component="label"
+                                fullWidth
+                                sx={{ mb: 2, p: 1.5 }}
+                                startIcon={<CloudUpload />}
+                            >
+                                {fileInput ? fileInput.name : "Choose File"}
+                                <input type="file" id="file-input" hidden onChange={handleFileChange} />
+                            </Button>
+                            <Button 
+                                variant="contained" 
+                                color="primary"
+                                onClick={handleFileSubmit} 
+                                disabled={loading || !fileInput} 
+                                fullWidth
+                            >
+                                {loading ? <CircularProgress size={24} color="inherit" /> : 'Upload & Process'}
+                            </Button>
+                        </CardContent>
+                    </Card>
+                </Grid>
+                {error && (
+                    <Grid item xs={12}>
+                        <Alert severity="error" icon={<Error />}>{error}</Alert>
+                    </Grid>
+                )}
+                <Grid item xs={12}>
+                    <Card>
+                        <CardContent>
+                            <Typography variant="h6" gutterBottom>Enriched IP Addresses</Typography>
+                            <TableContainer>
+                                <Table>
+                                    <TableHead>
+                                        <TableRow>
+                                            <TableCell>IP Address</TableCell>
+                                            <TableCell>Hostname</TableCell>
+                                            <TableCell>Country</TableCell>
+                                            <TableCell>Organization</TableCell>
+                                            <TableCell>ASN</TableCell>
+                                            <TableCell>Open Ports</TableCell>
+                                            <TableCell>Actions</TableCell>
+                                        </TableRow>
+                                    </TableHead>
+                                    <TableBody>
+                                        {ips.length > 0 ? ips.map(ip => (
+                                            <TableRow key={ip.id} hover>
+                                                <TableCell>{ip.ip_address}</TableCell>
+                                                <TableCell>{ip.hostname}</TableCell>
+                                                <TableCell>{ip.country}</TableCell>
+                                                <TableCell>{ip.org}</TableCell>
+                                                <TableCell>{ip.asn}</TableCell>
+                                                <TableCell>{ip.ports.join(', ')}</TableCell>
+                                                <TableCell>
+                                                    <Button 
+                                                        variant="outlined" 
+                                                        size="small"
+                                                        onClick={() => handleViewDetails(ip)}
+                                                        startIcon={<Visibility />}
+                                                    >
+                                                        Details
+                                                    </Button>
+                                                </TableCell>
+                                            </TableRow>
+                                        )) : (
+                                            <TableRow>
+                                                <TableCell colSpan={7} align="center">
+                                                    <Typography sx={{ p: 4, color: 'text.secondary' }}>
+                                                        No IP data available. Add IPs to see results.
+                                                    </Typography>
+                                                </TableCell>
+                                            </TableRow>
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            </TableContainer>
+                        </CardContent>
+                    </Card>
+                </Grid>
+            </Grid>
+            {selectedIp && (
+                <Dialog open={isModalOpen} onClose={handleCloseModal} maxWidth="md" fullWidth>
+                    <DialogTitle>Raw JSON for {selectedIp.ip_address}</DialogTitle>
+                    <DialogContent>
+                        <Paper component="pre" sx={{ p: 2, whiteSpace: 'pre-wrap', backgroundColor: 'background.default' }}>
+                            {JSON.stringify(selectedIp, null, 2)}
+                        </Paper>
+                    </DialogContent>
+                    <DialogActions>
+                        <Button onClick={handleCloseModal}>Close</Button>
+                    </DialogActions>
+                </Dialog>
+            )}
+        </Box>
+    );
+};
+
+export default DashboardPage;
