@@ -7,51 +7,47 @@ import {
 } from '@mui/material';
 import { Dashboard, Settings, Api } from '@mui/icons-material';
 import { darkTheme } from './theme/theme';
+import { useNavigationState } from './hooks/useApiKeyState';
+import { getApiKeyCount } from './utils/apiKeyUtils';
 
 function App() {
-    const [page, setPage] = useState('dashboard');
-    const [apiKey, setApiKey] = useState(localStorage.getItem('apiKey') || localStorage.getItem('shodanApiKey'));
+    // Use the new navigation state hook for real-time updates
+    const { 
+        currentPage, 
+        canNavigate, 
+        hasValidKey, 
+        navigateTo,
+        setCurrentPage 
+    } = useNavigationState();
+    
+    // Local state for API key count (updates in real-time)
+    const [apiKeyCount, setApiKeyCount] = useState(0);
 
+    // Update API key count when state changes
     useEffect(() => {
-        const key = localStorage.getItem('apiKey') || localStorage.getItem('shodanApiKey');
-        setApiKey(key);
-        if (!key) {
-            setPage('settings');
-        }
+        const updateApiKeyCount = () => {
+            setApiKeyCount(getApiKeyCount());
+        };
+
+        // Initial count
+        updateApiKeyCount();
+
+        // Listen for API key updates
+        const handleApiKeyUpdate = () => {
+            updateApiKeyCount();
+        };
+
+        window.addEventListener('apiKeyUpdate', handleApiKeyUpdate);
+        window.addEventListener('storage', handleApiKeyUpdate);
+
+        return () => {
+            window.removeEventListener('apiKeyUpdate', handleApiKeyUpdate);
+            window.removeEventListener('storage', handleApiKeyUpdate);
+        };
     }, []);
 
     const handleNavigation = (newPage) => {
-        setPage(newPage);
-    };
-    
-    // This effect will listen for changes in localStorage and update the apiKey state
-    useEffect(() => {
-        const handleStorageChange = () => {
-            const key = localStorage.getItem('apiKey') || localStorage.getItem('shodanApiKey');
-            setApiKey(key);
-            if (!key) {
-                setPage('settings');
-            }
-        };
-
-        window.addEventListener('storage', handleStorageChange);
-
-        return () => {
-            window.removeEventListener('storage', handleStorageChange);
-        };
-    }, []);
-
-    const getApiStatus = () => {
-        const shodanKey = localStorage.getItem('shodanApiKey');
-        const virusTotalKey = localStorage.getItem('virusTotalApiKey');
-        const abuseIPDBKey = localStorage.getItem('abuseIPDBApiKey');
-        
-        let activeCount = 0;
-        if (shodanKey) activeCount++;
-        if (virusTotalKey) activeCount++;
-        if (abuseIPDBKey) activeCount++;
-        
-        return activeCount;
+        navigateTo(newPage);
     };
 
   return (
@@ -65,9 +61,9 @@ function App() {
             </Typography>
             <Chip 
               icon={<Api />}
-              label={`${getApiStatus()} APIs Active`}
+              label={`${apiKeyCount} APIs Active`}
               size="small"
-              color={getApiStatus() > 0 ? 'success' : 'default'}
+              color={apiKeyCount > 0 ? 'success' : 'default'}
               variant="outlined"
             />
           </Box>
@@ -75,9 +71,9 @@ function App() {
             <Button 
                 color="inherit" 
                 onClick={() => handleNavigation('dashboard')} 
-                disabled={!apiKey}
+                disabled={!canNavigate}
                 startIcon={<Dashboard />}
-                variant={page === 'dashboard' ? 'outlined' : 'text'}
+                variant={currentPage === 'dashboard' ? 'outlined' : 'text'}
             >
                 Dashboard
             </Button>
@@ -85,7 +81,7 @@ function App() {
                 color="inherit" 
                 onClick={() => handleNavigation('settings')}
                 startIcon={<Settings />}
-                variant={page === 'settings' ? 'outlined' : 'text'}
+                variant={currentPage === 'settings' ? 'outlined' : 'text'}
             >
                 Settings
             </Button>
@@ -93,7 +89,7 @@ function App() {
         </Toolbar>
       </AppBar>
       <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}>
-        {page === 'dashboard' && apiKey ? <DashboardPage /> : <SettingsPage />}
+        {currentPage === 'dashboard' && hasValidKey ? <DashboardPage /> : <SettingsPage />}
       </Container>
     </ThemeProvider>
   );

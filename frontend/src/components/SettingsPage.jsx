@@ -7,8 +7,15 @@ import {
 } from '@mui/material';
 import {
     VpnKey, Delete, CheckCircle, Error, Api,
-    Security, Storage, Notifications, Info
+    Security, Storage, Notifications, Info, ArrowForward
 } from '@mui/icons-material';
+import { useApiKeyValidation } from '../hooks/useApiKeyState';
+import { 
+    setApiKeyForProvider, 
+    removeApiKeyForProvider, 
+    triggerApiKeyUpdate, 
+    triggerNavigationToDashboard 
+} from '../utils/apiKeyUtils';
 
 // Tab Panel Component
 function TabPanel({ children, value, index, ...other }) {
@@ -117,24 +124,33 @@ const ApiKeyCard = ({
 
 const SettingsPage = () => {
     const [tabValue, setTabValue] = useState(0);
+    
+    // Use the validation hook for enhanced state management
+    const {
+        isValidating,
+        provider: validatingProvider,
+        stage: validationStage,
+        message: validationMessage,
+        error: validationError,
+        startValidation,
+        markValidationSuccess,
+        markValidationError,
+        startRedirect,
+        resetValidation
+    } = useApiKeyValidation();
 
-    // Shodan API state
+    // API key input states
     const [shodanApiKey, setShodanApiKey] = useState(localStorage.getItem('shodanApiKey') || '');
-    const [shodanLoading, setShodanLoading] = useState(false);
-    const [shodanError, setShodanError] = useState('');
-    const [shodanSuccess, setShodanSuccess] = useState('');
-
-    // VirusTotal API state (placeholder for future implementation)
     const [virusTotalApiKey, setVirusTotalApiKey] = useState(localStorage.getItem('virusTotalApiKey') || '');
-    const [virusTotalLoading, setVirusTotalLoading] = useState(false);
-    const [virusTotalError, setVirusTotalError] = useState('');
-    const [virusTotalSuccess, setVirusTotalSuccess] = useState('');
-
-    // AbuseIPDB API state (placeholder for future implementation)
     const [abuseIPDBApiKey, setAbuseIPDBApiKey] = useState(localStorage.getItem('abuseIPDBApiKey') || '');
-    const [abuseIPDBLoading, setAbuseIPDBLoading] = useState(false);
-    const [abuseIPDBError, setAbuseIPDBError] = useState('');
+
+    // Individual success/error states for display
+    const [shodanSuccess, setShodanSuccess] = useState('');
+    const [shodanError, setShodanError] = useState('');
+    const [virusTotalSuccess, setVirusTotalSuccess] = useState('');
+    const [virusTotalError, setVirusTotalError] = useState('');
     const [abuseIPDBSuccess, setAbuseIPDBSuccess] = useState('');
+    const [abuseIPDBError, setAbuseIPDBError] = useState('');
 
     const handleTabChange = (event, newValue) => {
         setTabValue(newValue);
@@ -152,35 +168,62 @@ const SettingsPage = () => {
             setShodanError('Shodan API key is required.');
             return;
         }
-        setShodanLoading(true);
+        
+        // Clear previous states
         setShodanError('');
         setShodanSuccess('');
+        
+        // Start validation process
+        startValidation('shodan');
+        
         try {
             const response = await validateApiKey(shodanApiKey);
             if (response.data.is_valid) {
-                localStorage.setItem('shodanApiKey', shodanApiKey);
-                // Keep backward compatibility
-                localStorage.setItem('apiKey', shodanApiKey);
-                setShodanSuccess('Shodan API key is valid and has been saved.');
+                // Save API key using utility function
+                setApiKeyForProvider('shodan', shodanApiKey);
+                
+                // Mark validation as successful
+                markValidationSuccess('shodan', 'Shodan API key validated successfully!');
+                setShodanSuccess('Shodan API key validated successfully!');
+                
+                // Trigger API key update event
+                triggerApiKeyUpdate('shodan', 'validated');
+                
+                // Start redirect process after a brief delay
+                setTimeout(() => {
+                    startRedirect('shodan', 'Redirecting to Dashboard...');
+                    setShodanSuccess('Redirecting to Dashboard...');
+                    
+                    // Navigate to dashboard after another brief delay
+                    setTimeout(() => {
+                        triggerNavigationToDashboard();
+                        resetValidation();
+                    }, 1500);
+                }, 1500);
+                
             } else {
-                localStorage.removeItem('shodanApiKey');
-                localStorage.removeItem('apiKey');
-                setShodanError('Invalid Shodan API key.');
+                // Remove invalid key
+                removeApiKeyForProvider('shodan');
+                const errorMsg = 'Invalid Shodan API key.';
+                markValidationError('shodan', errorMsg);
+                setShodanError(errorMsg);
             }
         } catch (error) {
             console.error("Error validating Shodan API key:", error);
-            setShodanError('Failed to validate Shodan API key. Please try again later.');
-        } finally {
-            setShodanLoading(false);
+            const errorMsg = 'Failed to validate Shodan API key. Please try again later.';
+            markValidationError('shodan', errorMsg);
+            setShodanError(errorMsg);
         }
     };
 
     const handleShodanApiKeyDelete = () => {
-        localStorage.removeItem('shodanApiKey');
-        localStorage.removeItem('apiKey'); // Backward compatibility
+        removeApiKeyForProvider('shodan');
         setShodanApiKey('');
         setShodanSuccess('Shodan API key has been deleted.');
         setShodanError('');
+        
+        // Trigger update event
+        triggerApiKeyUpdate('shodan', 'removed');
     };
 
     // Placeholder handlers for other APIs
@@ -195,23 +238,48 @@ const SettingsPage = () => {
             setVirusTotalError('VirusTotal API key is required.');
             return;
         }
-        setVirusTotalLoading(true);
+        
+        // Clear previous states
         setVirusTotalError('');
         setVirusTotalSuccess('');
-
+        
+        // Start validation process
+        startValidation('virustotal');
+        
         // Placeholder - implement actual validation when VirusTotal integration is added
         setTimeout(() => {
-            localStorage.setItem('virusTotalApiKey', virusTotalApiKey);
-            setVirusTotalSuccess('VirusTotal API key saved. (Integration coming soon)');
-            setVirusTotalLoading(false);
+            // Save API key
+            setApiKeyForProvider('virustotal', virusTotalApiKey);
+            
+            // Mark as successful
+            markValidationSuccess('virustotal', 'VirusTotal API key saved successfully!');
+            setVirusTotalSuccess('VirusTotal API key saved successfully! (Integration coming soon)');
+            
+            // Trigger update event
+            triggerApiKeyUpdate('virustotal', 'validated');
+            
+            // Start redirect process
+            setTimeout(() => {
+                startRedirect('virustotal', 'Redirecting to Dashboard...');
+                setVirusTotalSuccess('Redirecting to Dashboard...');
+                
+                // Navigate to dashboard
+                setTimeout(() => {
+                    triggerNavigationToDashboard();
+                    resetValidation();
+                }, 1500);
+            }, 1500);
         }, 1000);
     };
 
     const handleVirusTotalApiKeyDelete = () => {
-        localStorage.removeItem('virusTotalApiKey');
+        removeApiKeyForProvider('virustotal');
         setVirusTotalApiKey('');
         setVirusTotalSuccess('VirusTotal API key has been deleted.');
         setVirusTotalError('');
+        
+        // Trigger update event
+        triggerApiKeyUpdate('virustotal', 'removed');
     };
 
     const handleAbuseIPDBApiKeyChange = (e) => {
@@ -225,41 +293,66 @@ const SettingsPage = () => {
             setAbuseIPDBError('AbuseIPDB API key is required.');
             return;
         }
-        setAbuseIPDBLoading(true);
+        
+        // Clear previous states
         setAbuseIPDBError('');
         setAbuseIPDBSuccess('');
-
+        
+        // Start validation process
+        startValidation('abuseipdb');
+        
         // Placeholder - implement actual validation when AbuseIPDB integration is added
         setTimeout(() => {
-            localStorage.setItem('abuseIPDBApiKey', abuseIPDBApiKey);
-            setAbuseIPDBSuccess('AbuseIPDB API key saved. (Integration coming soon)');
-            setAbuseIPDBLoading(false);
+            // Save API key
+            setApiKeyForProvider('abuseipdb', abuseIPDBApiKey);
+            
+            // Mark as successful
+            markValidationSuccess('abuseipdb', 'AbuseIPDB API key saved successfully!');
+            setAbuseIPDBSuccess('AbuseIPDB API key saved successfully! (Integration coming soon)');
+            
+            // Trigger update event
+            triggerApiKeyUpdate('abuseipdb', 'validated');
+            
+            // Start redirect process
+            setTimeout(() => {
+                startRedirect('abuseipdb', 'Redirecting to Dashboard...');
+                setAbuseIPDBSuccess('Redirecting to Dashboard...');
+                
+                // Navigate to dashboard
+                setTimeout(() => {
+                    triggerNavigationToDashboard();
+                    resetValidation();
+                }, 1500);
+            }, 1500);
         }, 1000);
     };
 
     const handleAbuseIPDBApiKeyDelete = () => {
-        localStorage.removeItem('abuseIPDBApiKey');
+        removeApiKeyForProvider('abuseipdb');
         setAbuseIPDBApiKey('');
         setAbuseIPDBSuccess('AbuseIPDB API key has been deleted.');
         setAbuseIPDBError('');
+        
+        // Trigger update event
+        triggerApiKeyUpdate('abuseipdb', 'removed');
     };
 
     const getShodanStatus = () => {
-        if (shodanLoading) return 'testing';
+        if (isValidating && validatingProvider === 'shodan') return 'testing';
         if (shodanApiKey && localStorage.getItem('shodanApiKey')) return 'active';
         if (shodanError) return 'invalid';
         return 'inactive';
     };
 
     const getVirusTotalStatus = () => {
-        if (virusTotalLoading) return 'testing';
+        if (isValidating && validatingProvider === 'virustotal') return 'testing';
         if (virusTotalApiKey && localStorage.getItem('virusTotalApiKey')) return 'active';
         if (virusTotalError) return 'invalid';
         return 'inactive';
     };
 
     const getAbuseIPDBStatus = () => {
-        if (abuseIPDBLoading) return 'testing';
+        if (isValidating && validatingProvider === 'abuseipdb') return 'testing';
         if (abuseIPDBApiKey && localStorage.getItem('abuseIPDBApiKey')) return 'active';
         if (abuseIPDBError) return 'invalid';
         return 'inactive';
@@ -329,7 +422,7 @@ const SettingsPage = () => {
                             onApiKeyChange={handleShodanApiKeyChange}
                             onValidate={handleShodanApiKeyValidate}
                             onDelete={handleShodanApiKeyDelete}
-                            loading={shodanLoading}
+                            loading={isValidating && validatingProvider === 'shodan'}
                             error={shodanError}
                             success={shodanSuccess}
                             placeholder="Enter Shodan API Key"
@@ -343,7 +436,7 @@ const SettingsPage = () => {
                             onApiKeyChange={handleVirusTotalApiKeyChange}
                             onValidate={handleVirusTotalApiKeyValidate}
                             onDelete={handleVirusTotalApiKeyDelete}
-                            loading={virusTotalLoading}
+                            loading={isValidating && validatingProvider === 'virustotal'}
                             error={virusTotalError}
                             success={virusTotalSuccess}
                             placeholder="Enter VirusTotal API Key"
@@ -357,7 +450,7 @@ const SettingsPage = () => {
                             onApiKeyChange={handleAbuseIPDBApiKeyChange}
                             onValidate={handleAbuseIPDBApiKeyValidate}
                             onDelete={handleAbuseIPDBApiKeyDelete}
-                            loading={abuseIPDBLoading}
+                            loading={isValidating && validatingProvider === 'abuseipdb'}
                             error={abuseIPDBError}
                             success={abuseIPDBSuccess}
                             placeholder="Enter AbuseIPDB API Key"
