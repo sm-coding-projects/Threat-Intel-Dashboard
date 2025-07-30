@@ -110,5 +110,17 @@ def add_ips():
     return jsonify(enriched_ips), 201
 
 
+@app.route('/api/ips/<int:ip_id>', methods=['DELETE'])
+def delete_ip(ip_id):
+    """Deletes an IP address from the database."""
+    ip_to_delete = IPAddress.query.get(ip_id)
+    if not ip_to_delete:
+        return jsonify({'error': 'IP address not found'}), 404
+    
+    db.session.delete(ip_to_delete)
+    db.session.commit()
+    
+    return jsonify({'message': 'IP address deleted successfully'}), 200
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5001)

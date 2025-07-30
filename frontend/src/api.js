@@ -34,3 +34,7 @@ export const addIPsFromText = (text, apiKey) => {
 export const validateApiKey = (apiKey) => {
     return axios.post(`${API_URL}/validate-api-key`, { api_key: apiKey });
 };
+
+export const deleteIP = (ipId) => {
+    return axios.delete(`${API_URL}/ips/${ipId}`);
+};

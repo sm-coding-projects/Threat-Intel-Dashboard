@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { getIPs, addIPsFromFile, addIPsFromText } from '../api';
+import { getIPs, addIPsFromFile, addIPsFromText, deleteIP } from '../api';
 import { 
     TextField, Button, Table, TableBody, TableCell, 
     TableContainer, TableHead, TableRow, Paper, CircularProgress, 
     Alert, Grid, Typography, Card, CardContent, Box,
-    Dialog, DialogTitle, DialogContent, DialogActions
+    Dialog, DialogTitle, DialogContent, DialogActions,
+    Tooltip, IconButton
 } from '@mui/material';
-import { CloudUpload, Send, Error, Visibility } from '@mui/icons-material';
+import { CloudUpload, Send, Error, Visibility, InfoOutlined, Delete } from '@mui/icons-material';
 
 const DashboardPage = () => {
     const [ips, setIps] = useState([]);
@@ -86,6 +87,20 @@ const DashboardPage = () => {
         setSelectedIp(null);
     };
 
+    const handleDelete = async (ipId) => {
+        const originalIps = [...ips];
+        const updatedIps = ips.filter(ip => ip.id !== ipId);
+        setIps(updatedIps);
+
+        try {
+            await deleteIP(ipId);
+        } catch (error) {
+            console.error("Error deleting IP:", error);
+            setError('Failed to delete IP. Please try again later.');
+            setIps(originalIps); // Revert optimistic update
+        }
+    };
+
     return (
         <Box>
             <Grid container spacing={3}>
@@ -123,7 +138,26 @@ const DashboardPage = () => {
                 <Grid item xs={12} md={6}>
                     <Card>
                         <CardContent>
-                            <Typography variant="h6" gutterBottom>Add IPs from File</Typography>
+                            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                                <Typography variant="h6" gutterBottom sx={{ flexGrow: 1, mb: 0 }}>
+                                    Add IPs from File
+                                </Typography>
+                                <Tooltip title={
+                                    <React.Fragment>
+                                        The file should contain one IP address per line.
+                                        <br />
+                                        For example:
+                                        <br />
+                                        8.8.8.8
+                                        <br />
+                                        1.1.1.1
+                                    </React.Fragment>
+                                }>
+                                    <IconButton size="small">
+                                        <InfoOutlined />
+                                    </IconButton>
+                                </Tooltip>
+                            </Box>
                             <Button
                                 variant="outlined"
                                 component="label"
@@ -178,14 +212,23 @@ const DashboardPage = () => {
                                                 <TableCell>{ip.asn}</TableCell>
                                                 <TableCell>{ip.ports.join(', ')}</TableCell>
                                                 <TableCell>
-                                                    <Button 
-                                                        variant="outlined" 
-                                                        size="small"
-                                                        onClick={() => handleViewDetails(ip)}
-                                                        startIcon={<Visibility />}
-                                                    >
-                                                        Details
-                                                    </Button>
+                                                    <Box sx={{ display: 'flex', gap: 1 }}>
+                                                        <Button 
+                                                            variant="outlined" 
+                                                            size="small"
+                                                            onClick={() => handleViewDetails(ip)}
+                                                            startIcon={<Visibility />}
+                                                        >
+                                                            Details
+                                                        </Button>
+                                                        <IconButton 
+                                                            aria-label="delete"
+                                                            size="small"
+                                                            onClick={() => handleDelete(ip.id)}
+                                                        >
+                                                            <Delete />
+                                                        </IconButton>
+                                                    </Box>
                                                 </TableCell>
                                             </TableRow>
                                         )) : (
