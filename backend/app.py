@@ -127,7 +127,8 @@ def health_check():
     """Health check endpoint for Docker health checks."""
     try:
         # Check database connection
-        db.session.execute('SELECT 1')
+        from sqlalchemy import text
+        db.session.execute(text('SELECT 1'))
         db_status = 'healthy'
     except Exception as e:
         db_status = f'unhealthy: {str(e)}'
