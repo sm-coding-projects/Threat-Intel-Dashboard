@@ -5,9 +5,10 @@ import {
     TableContainer, TableHead, TableRow, Paper, CircularProgress, 
     Alert, Grid, Typography, Card, CardContent, Box,
     Dialog, DialogTitle, DialogContent, DialogActions,
-    Tooltip, IconButton
+    Tooltip, IconButton, Divider, Stack
 } from '@mui/material';
-import { CloudUpload, Send, Error, Visibility, InfoOutlined, Delete } from '@mui/icons-material';
+import { CloudUpload, Send, Error, Visibility, InfoOutlined, Delete, TrendingUp } from '@mui/icons-material';
+import LoadingButton from './shared/LoadingButton';
 
 const DashboardPage = () => {
     const [ips, setIps] = useState([]);
@@ -105,9 +106,16 @@ const DashboardPage = () => {
         <Box>
             <Grid container spacing={3}>
                 <Grid item xs={12}>
-                    <Typography variant="h5" component="h1" gutterBottom>
-                        IP Enrichment
+                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                        <TrendingUp sx={{ mr: 2, color: 'primary.main' }} />
+                        <Typography variant="h4" component="h1" gutterBottom sx={{ mb: 0 }}>
+                            IP Intelligence Dashboard
+                        </Typography>
+                    </Box>
+                    <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+                        Enrich IP addresses with threat intelligence data from multiple sources
                     </Typography>
+                    <Divider sx={{ mb: 3 }} />
                 </Grid>
                 <Grid item xs={12} md={6}>
                     <Card>
@@ -122,16 +130,18 @@ const DashboardPage = () => {
                                 fullWidth
                                 variant="outlined"
                             />
-                            <Button 
+                            <LoadingButton
                                 variant="contained" 
                                 color="primary"
                                 onClick={handleTextSubmit} 
-                                disabled={loading || !textInput.trim()} 
+                                disabled={!textInput.trim()} 
+                                loading={loading}
+                                loadingText="Processing..."
                                 sx={{ mt: 2 }}
                                 startIcon={<Send />}
                             >
-                                {loading ? <CircularProgress size={24} color="inherit" /> : 'Submit'}
-                            </Button>
+                                Submit IPs
+                            </LoadingButton>
                         </CardContent>
                     </Card>
                 </Grid>
@@ -168,15 +178,18 @@ const DashboardPage = () => {
                                 {fileInput ? fileInput.name : "Choose File"}
                                 <input type="file" id="file-input" hidden onChange={handleFileChange} />
                             </Button>
-                            <Button 
+                            <LoadingButton
                                 variant="contained" 
                                 color="primary"
                                 onClick={handleFileSubmit} 
-                                disabled={loading || !fileInput} 
+                                disabled={!fileInput} 
+                                loading={loading}
+                                loadingText="Processing..."
                                 fullWidth
+                                startIcon={<CloudUpload />}
                             >
-                                {loading ? <CircularProgress size={24} color="inherit" /> : 'Upload & Process'}
-                            </Button>
+                                Upload & Process
+                            </LoadingButton>
                         </CardContent>
                     </Card>
                 </Grid>

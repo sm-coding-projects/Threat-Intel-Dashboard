@@ -12,7 +12,7 @@ export const addIPsFromFile = (file, apiKey) => {
   return axios.post(`${API_URL}/ips`, formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
-      'X-API-Key': apiKey || localStorage.getItem('apiKey'),
+      'X-API-Key': apiKey || localStorage.getItem('shodanApiKey') || localStorage.getItem('apiKey'),
     },
   });
 };
@@ -20,7 +20,7 @@ export const addIPsFromFile = (file, apiKey) => {
 export const addIPsFromText = (text, apiKey) => {
     return axios.post(`${API_URL}/ips`, { ips: text }, {
         headers: {
-            'X-API-Key': apiKey || localStorage.getItem('apiKey'),
+            'X-API-Key': apiKey || localStorage.getItem('shodanApiKey') || localStorage.getItem('apiKey'),
         },
     }).then(response => response)
       .catch(error => {

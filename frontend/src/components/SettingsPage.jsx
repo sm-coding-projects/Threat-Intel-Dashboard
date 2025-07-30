@@ -1,101 +1,408 @@
 import React, { useState } from 'react';
 import { validateApiKey } from '../api';
-import { 
-    TextField, Button, CircularProgress, 
-    Alert, Grid, Typography, Card, CardContent, Box
+import {
+    TextField, Button, CircularProgress,
+    Alert, Grid, Typography, Card, CardContent, Box,
+    Tabs, Tab, Divider, Chip, Stack, Paper
 } from '@mui/material';
-import { VpnKey, Delete, CheckCircle, Error } from '@mui/icons-material';
+import {
+    VpnKey, Delete, CheckCircle, Error, Api,
+    Security, Storage, Notifications, Info
+} from '@mui/icons-material';
 
-const SettingsPage = () => {
-    const [apiKey, setApiKey] = useState(localStorage.getItem('apiKey') || '');
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState('');
-    const [success, setSuccess] = useState('');
+// Tab Panel Component
+function TabPanel({ children, value, index, ...other }) {
+    return (
+        <div
+            role="tabpanel"
+            hidden={value !== index}
+            id={`settings-tabpanel-${index}`}
+            aria-labelledby={`settings-tab-${index}`}
+            {...other}
+        >
+            {value === index && (
+                <Box sx={{ pt: 3 }}>
+                    {children}
+                </Box>
+            )}
+        </div>
+    );
+}
 
-    const handleApiKeyChange = (e) => {
-        setApiKey(e.target.value);
+// API Key Card Component
+const ApiKeyCard = ({
+    title,
+    description,
+    apiKey,
+    onApiKeyChange,
+    onValidate,
+    onDelete,
+    loading,
+    error,
+    success,
+    placeholder = "Enter API Key",
+    status = "inactive"
+}) => {
+    const getStatusColor = () => {
+        switch (status) {
+            case 'active': return 'success';
+            case 'invalid': return 'error';
+            case 'testing': return 'warning';
+            default: return 'default';
+        }
     };
 
-    const handleApiKeyValidate = async () => {
-        if (!apiKey) {
-            setError('API key is required.');
-            return;
+    const getStatusText = () => {
+        switch (status) {
+            case 'active': return 'Active';
+            case 'invalid': return 'Invalid';
+            case 'testing': return 'Testing';
+            default: return 'Not Configured';
         }
-        setLoading(true);
-        setError('');
-        setSuccess('');
-        try {
-            const response = await validateApiKey(apiKey);
-            if (response.data.is_valid) {
-                localStorage.setItem('apiKey', apiKey);
-                setSuccess('API key is valid and has been saved.');
-            } else {
-                localStorage.removeItem('apiKey');
-                setError('Invalid API key.');
-            }
-        } catch (error) {
-            console.error("Error validating API key:", error);
-            setError('Failed to validate API key. Please try again later.');
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleApiKeyDelete = () => {
-        localStorage.removeItem('apiKey');
-        setApiKey('');
-        setSuccess('API key has been deleted.');
-        setError('');
     };
 
     return (
-        <Grid container justifyContent="center" alignItems="center" sx={{ minHeight: 'calc(100vh - 64px)' }}>
-            <Grid item xs={12} sm={8} md={6} lg={4}>
-                <Card>
-                    <CardContent sx={{ p: 4 }}>
-                        <Typography variant="h5" component="h1" gutterBottom align="center">
-                            API Key Settings
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary" align="center" sx={{ mb: 3 }}>
-                            Manage your Shodan API key.
-                        </Typography>
-                        <TextField
-                            label="Shodan API Key"
-                            value={apiKey}
-                            onChange={handleApiKeyChange}
-                            fullWidth
-                            type="password"
-                            variant="outlined"
-                        />
-                        <Box sx={{ display: 'flex', gap: 2, mt: 3 }}>
-                            <Button 
-                                variant="contained" 
-                                color="primary"
-                                onClick={handleApiKeyValidate} 
-                                disabled={loading} 
-                                fullWidth
-                                sx={{ py: 1.5 }}
-                                startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <VpnKey />}
-                            >
-                                Validate & Save
-                            </Button>
-                            <Button 
-                                variant="outlined" 
-                                color="error"
-                                onClick={handleApiKeyDelete} 
-                                fullWidth
-                                sx={{ py: 1.5 }}
-                                startIcon={<Delete />}
-                            >
-                                Delete Key
-                            </Button>
+        <Card sx={{ mb: 3, border: '1px solid', borderColor: 'divider' }}>
+            <CardContent sx={{ p: 3 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                    <Typography variant="h6" component="h3">
+                        {title}
+                    </Typography>
+                    <Chip
+                        label={getStatusText()}
+                        color={getStatusColor()}
+                        size="small"
+                        variant="outlined"
+                    />
+                </Box>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                    {description}
+                </Typography>
+                <TextField
+                    label={placeholder}
+                    value={apiKey}
+                    onChange={onApiKeyChange}
+                    fullWidth
+                    type="password"
+                    variant="outlined"
+                    sx={{ mb: 2 }}
+                />
+                <Stack direction="row" spacing={2}>
+                    <Button
+                        variant="contained"
+                        color="primary"
+                        onClick={onValidate}
+                        disabled={loading || !apiKey.trim()}
+                        sx={{ flex: 1 }}
+                        startIcon={loading ? <CircularProgress size={20} color="inherit" /> : <VpnKey />}
+                    >
+                        {loading ? 'Validating...' : 'Validate & Save'}
+                    </Button>
+                    <Button
+                        variant="outlined"
+                        color="error"
+                        onClick={onDelete}
+                        disabled={!apiKey}
+                        startIcon={<Delete />}
+                    >
+                        Delete
+                    </Button>
+                </Stack>
+                {error && <Alert severity="error" icon={<Error />} sx={{ mt: 2 }}>{error}</Alert>}
+                {success && <Alert severity="success" icon={<CheckCircle />} sx={{ mt: 2 }}>{success}</Alert>}
+            </CardContent>
+        </Card>
+    );
+};
+
+const SettingsPage = () => {
+    const [tabValue, setTabValue] = useState(0);
+
+    // Shodan API state
+    const [shodanApiKey, setShodanApiKey] = useState(localStorage.getItem('shodanApiKey') || '');
+    const [shodanLoading, setShodanLoading] = useState(false);
+    const [shodanError, setShodanError] = useState('');
+    const [shodanSuccess, setShodanSuccess] = useState('');
+
+    // VirusTotal API state (placeholder for future implementation)
+    const [virusTotalApiKey, setVirusTotalApiKey] = useState(localStorage.getItem('virusTotalApiKey') || '');
+    const [virusTotalLoading, setVirusTotalLoading] = useState(false);
+    const [virusTotalError, setVirusTotalError] = useState('');
+    const [virusTotalSuccess, setVirusTotalSuccess] = useState('');
+
+    // AbuseIPDB API state (placeholder for future implementation)
+    const [abuseIPDBApiKey, setAbuseIPDBApiKey] = useState(localStorage.getItem('abuseIPDBApiKey') || '');
+    const [abuseIPDBLoading, setAbuseIPDBLoading] = useState(false);
+    const [abuseIPDBError, setAbuseIPDBError] = useState('');
+    const [abuseIPDBSuccess, setAbuseIPDBSuccess] = useState('');
+
+    const handleTabChange = (event, newValue) => {
+        setTabValue(newValue);
+    };
+
+    // Shodan API handlers
+    const handleShodanApiKeyChange = (e) => {
+        setShodanApiKey(e.target.value);
+        setShodanError('');
+        setShodanSuccess('');
+    };
+
+    const handleShodanApiKeyValidate = async () => {
+        if (!shodanApiKey.trim()) {
+            setShodanError('Shodan API key is required.');
+            return;
+        }
+        setShodanLoading(true);
+        setShodanError('');
+        setShodanSuccess('');
+        try {
+            const response = await validateApiKey(shodanApiKey);
+            if (response.data.is_valid) {
+                localStorage.setItem('shodanApiKey', shodanApiKey);
+                // Keep backward compatibility
+                localStorage.setItem('apiKey', shodanApiKey);
+                setShodanSuccess('Shodan API key is valid and has been saved.');
+            } else {
+                localStorage.removeItem('shodanApiKey');
+                localStorage.removeItem('apiKey');
+                setShodanError('Invalid Shodan API key.');
+            }
+        } catch (error) {
+            console.error("Error validating Shodan API key:", error);
+            setShodanError('Failed to validate Shodan API key. Please try again later.');
+        } finally {
+            setShodanLoading(false);
+        }
+    };
+
+    const handleShodanApiKeyDelete = () => {
+        localStorage.removeItem('shodanApiKey');
+        localStorage.removeItem('apiKey'); // Backward compatibility
+        setShodanApiKey('');
+        setShodanSuccess('Shodan API key has been deleted.');
+        setShodanError('');
+    };
+
+    // Placeholder handlers for other APIs
+    const handleVirusTotalApiKeyChange = (e) => {
+        setVirusTotalApiKey(e.target.value);
+        setVirusTotalError('');
+        setVirusTotalSuccess('');
+    };
+
+    const handleVirusTotalApiKeyValidate = async () => {
+        if (!virusTotalApiKey.trim()) {
+            setVirusTotalError('VirusTotal API key is required.');
+            return;
+        }
+        setVirusTotalLoading(true);
+        setVirusTotalError('');
+        setVirusTotalSuccess('');
+
+        // Placeholder - implement actual validation when VirusTotal integration is added
+        setTimeout(() => {
+            localStorage.setItem('virusTotalApiKey', virusTotalApiKey);
+            setVirusTotalSuccess('VirusTotal API key saved. (Integration coming soon)');
+            setVirusTotalLoading(false);
+        }, 1000);
+    };
+
+    const handleVirusTotalApiKeyDelete = () => {
+        localStorage.removeItem('virusTotalApiKey');
+        setVirusTotalApiKey('');
+        setVirusTotalSuccess('VirusTotal API key has been deleted.');
+        setVirusTotalError('');
+    };
+
+    const handleAbuseIPDBApiKeyChange = (e) => {
+        setAbuseIPDBApiKey(e.target.value);
+        setAbuseIPDBError('');
+        setAbuseIPDBSuccess('');
+    };
+
+    const handleAbuseIPDBApiKeyValidate = async () => {
+        if (!abuseIPDBApiKey.trim()) {
+            setAbuseIPDBError('AbuseIPDB API key is required.');
+            return;
+        }
+        setAbuseIPDBLoading(true);
+        setAbuseIPDBError('');
+        setAbuseIPDBSuccess('');
+
+        // Placeholder - implement actual validation when AbuseIPDB integration is added
+        setTimeout(() => {
+            localStorage.setItem('abuseIPDBApiKey', abuseIPDBApiKey);
+            setAbuseIPDBSuccess('AbuseIPDB API key saved. (Integration coming soon)');
+            setAbuseIPDBLoading(false);
+        }, 1000);
+    };
+
+    const handleAbuseIPDBApiKeyDelete = () => {
+        localStorage.removeItem('abuseIPDBApiKey');
+        setAbuseIPDBApiKey('');
+        setAbuseIPDBSuccess('AbuseIPDB API key has been deleted.');
+        setAbuseIPDBError('');
+    };
+
+    const getShodanStatus = () => {
+        if (shodanLoading) return 'testing';
+        if (shodanApiKey && localStorage.getItem('shodanApiKey')) return 'active';
+        if (shodanError) return 'invalid';
+        return 'inactive';
+    };
+
+    const getVirusTotalStatus = () => {
+        if (virusTotalLoading) return 'testing';
+        if (virusTotalApiKey && localStorage.getItem('virusTotalApiKey')) return 'active';
+        if (virusTotalError) return 'invalid';
+        return 'inactive';
+    };
+
+    const getAbuseIPDBStatus = () => {
+        if (abuseIPDBLoading) return 'testing';
+        if (abuseIPDBApiKey && localStorage.getItem('abuseIPDBApiKey')) return 'active';
+        if (abuseIPDBError) return 'invalid';
+        return 'inactive';
+    };
+
+    return (
+        <Box sx={{ maxWidth: 1200, mx: 'auto' }}>
+            <Typography variant="h4" component="h1" gutterBottom sx={{ mb: 4 }}>
+                Settings
+            </Typography>
+
+            <Paper sx={{ width: '100%', bgcolor: 'background.paper' }}>
+                <Tabs
+                    value={tabValue}
+                    onChange={handleTabChange}
+                    aria-label="settings tabs"
+                    sx={{ borderBottom: 1, borderColor: 'divider', px: 2 }}
+                >
+                    <Tab
+                        icon={<Api />}
+                        label="API Integrations"
+                        id="settings-tab-0"
+                        aria-controls="settings-tabpanel-0"
+                        sx={{ minHeight: 64 }}
+                    />
+                    <Tab
+                        icon={<Security />}
+                        label="Security"
+                        id="settings-tab-1"
+                        aria-controls="settings-tabpanel-1"
+                        sx={{ minHeight: 64 }}
+                        disabled
+                    />
+                    <Tab
+                        icon={<Storage />}
+                        label="Data Management"
+                        id="settings-tab-2"
+                        aria-controls="settings-tabpanel-2"
+                        sx={{ minHeight: 64 }}
+                        disabled
+                    />
+                    <Tab
+                        icon={<Notifications />}
+                        label="Notifications"
+                        id="settings-tab-3"
+                        aria-controls="settings-tabpanel-3"
+                        sx={{ minHeight: 64 }}
+                        disabled
+                    />
+                </Tabs>
+
+                <TabPanel value={tabValue} index={0}>
+                    <Box sx={{ p: 3 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+                            <Info sx={{ mr: 1, color: 'info.main' }} />
+                            <Typography variant="body2" color="text.secondary">
+                                Configure API keys for various threat intelligence services. Each service provides different types of data enrichment.
+                            </Typography>
                         </Box>
-                        {error && <Alert severity="error" icon={<Error />} sx={{ mt: 2 }}>{error}</Alert>}
-                        {success && <Alert severity="success" icon={<CheckCircle />} sx={{ mt: 2 }}>{success}</Alert>}
-                    </CardContent>
-                </Card>
-            </Grid>
-        </Grid>
+
+                        <Divider sx={{ mb: 3 }} />
+
+                        <ApiKeyCard
+                            title="Shodan API"
+                            description="Shodan is a search engine for Internet-connected devices. Use it to gather information about IP addresses, open ports, and services."
+                            apiKey={shodanApiKey}
+                            onApiKeyChange={handleShodanApiKeyChange}
+                            onValidate={handleShodanApiKeyValidate}
+                            onDelete={handleShodanApiKeyDelete}
+                            loading={shodanLoading}
+                            error={shodanError}
+                            success={shodanSuccess}
+                            placeholder="Enter Shodan API Key"
+                            status={getShodanStatus()}
+                        />
+
+                        <ApiKeyCard
+                            title="VirusTotal API"
+                            description="VirusTotal analyzes files and URLs for malicious content. Perfect for file hash and URL reputation checks. (Coming Soon)"
+                            apiKey={virusTotalApiKey}
+                            onApiKeyChange={handleVirusTotalApiKeyChange}
+                            onValidate={handleVirusTotalApiKeyValidate}
+                            onDelete={handleVirusTotalApiKeyDelete}
+                            loading={virusTotalLoading}
+                            error={virusTotalError}
+                            success={virusTotalSuccess}
+                            placeholder="Enter VirusTotal API Key"
+                            status={getVirusTotalStatus()}
+                        />
+
+                        <ApiKeyCard
+                            title="AbuseIPDB API"
+                            description="AbuseIPDB provides IP reputation data and abuse reports. Ideal for checking if an IP has been reported for malicious activity. (Coming Soon)"
+                            apiKey={abuseIPDBApiKey}
+                            onApiKeyChange={handleAbuseIPDBApiKeyChange}
+                            onValidate={handleAbuseIPDBApiKeyValidate}
+                            onDelete={handleAbuseIPDBApiKeyDelete}
+                            loading={abuseIPDBLoading}
+                            error={abuseIPDBError}
+                            success={abuseIPDBSuccess}
+                            placeholder="Enter AbuseIPDB API Key"
+                            status={getAbuseIPDBStatus()}
+                        />
+                    </Box>
+                </TabPanel>
+
+                <TabPanel value={tabValue} index={1}>
+                    <Box sx={{ p: 3, textAlign: 'center' }}>
+                        <Security sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
+                        <Typography variant="h6" color="text.secondary">
+                            Security Settings
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                            Coming soon - Configure security preferences, session timeouts, and access controls.
+                        </Typography>
+                    </Box>
+                </TabPanel>
+
+                <TabPanel value={tabValue} index={2}>
+                    <Box sx={{ p: 3, textAlign: 'center' }}>
+                        <Storage sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
+                        <Typography variant="h6" color="text.secondary">
+                            Data Management
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                            Coming soon - Manage data retention, export options, and storage preferences.
+                        </Typography>
+                    </Box>
+                </TabPanel>
+
+                <TabPanel value={tabValue} index={3}>
+                    <Box sx={{ p: 3, textAlign: 'center' }}>
+                        <Notifications sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
+                        <Typography variant="h6" color="text.secondary">
+                            Notifications
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                            Coming soon - Configure alerts, email notifications, and reporting preferences.
+                        </Typography>
+                    </Box>
+                </TabPanel>
+            </Paper>
+        </Box>
     );
 };
 
