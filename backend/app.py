@@ -122,5 +122,22 @@ def delete_ip(ip_id):
     
     return jsonify({'message': 'IP address deleted successfully'}), 200
 
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    """Health check endpoint for Docker health checks."""
+    try:
+        # Check database connection
+        db.session.execute('SELECT 1')
+        db_status = 'healthy'
+    except Exception as e:
+        db_status = f'unhealthy: {str(e)}'
+    
+    return jsonify({
+        'status': 'healthy' if db_status == 'healthy' else 'unhealthy',
+        'timestamp': datetime.datetime.utcnow().isoformat(),
+        'database': db_status,
+        'version': '1.0.0'
+    }), 200 if db_status == 'healthy' else 503
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5001)

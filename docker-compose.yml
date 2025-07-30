@@ -1,41 +1,88 @@
 
+version: '3.8'
+
 services:
-  backend:
-    build: ./backend
-    restart: unless-stopped
-    ports:
-      - "5001:5001" # Mapped to 5001 to avoid conflicts
-    volumes:
-      - ./backend:/app
-    environment:
-      - DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@db:5432/${DB_NAME}
-      - SHODAN_API_KEY=${SHODAN_API_KEY}
-    depends_on:
-      db:
-        condition: service_healthy
-
-  frontend:
-    build: ./frontend
-    restart: unless-stopped
-    ports:
-      - "3000:80" # React app served by Nginx on port 80 in container
-    depends_on:
-      - backend
-
+  # PostgreSQL Database
   db:
-    image: postgres:15
+    image: postgres:15-alpine
+    container_name: threat-intel-db
     restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-threat_intel_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-secure_password_123}
+      POSTGRES_DB: ${DB_NAME:-threat_intel_db}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    ports:
+      - "5432:5432"  # Expose for debugging (remove in production)
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-threat_intel_user} -d ${DB_NAME:-threat_intel_db}"]
       interval: 10s
       timeout: 5s
       retries: 5
-    environment:
-      - POSTGRES_USER=${DB_USER}
-      - POSTGRES_PASSWORD=${DB_PASSWORD}
-      - POSTGRES_DB=${DB_NAME}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+      start_period: 30s
+    networks:
+      - threat-intel-network
 
+  # Backend API Service
+  backend:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: threat-intel-backend
+    restart: unless-stopped
+    ports:
+      - "5001:5001"
+    environment:
+      - DATABASE_URL=postgresql://${DB_USER:-threat_intel_user}:${DB_PASSWORD:-secure_password_123}@db:5432/${DB_NAME:-threat_intel_db}
+      - SHODAN_API_KEY=${SHODAN_API_KEY:-}
+      - FLASK_ENV=${FLASK_ENV:-production}
+      - PYTHONPATH=/app
+    volumes:
+      - ./backend:/app:ro  # Read-only for security
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - threat-intel-network
+
+  # Frontend Web Service
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: threat-intel-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - threat-intel-network
+
+# Named volumes for data persistence
 volumes:
   postgres_data:
+    driver: local
+    name: threat-intel-postgres-data
+
+# Custom network for service communication
+networks:
+  threat-intel-network:
+    driver: bridge
+    name: threat-intel-network

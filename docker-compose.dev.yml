@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database (same as production)
+  db:
+    image: postgres:15-alpine
+    container_name: threat-intel-db-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-threat_intel_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-secure_password_123}
+      POSTGRES_DB: ${DB_NAME:-threat_intel_db}
+    volumes:
+      - postgres_data_dev:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-threat_intel_user} -d ${DB_NAME:-threat_intel_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - threat-intel-dev
+
+  # Backend API Service (development mode)
+  backend:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    container_name: threat-intel-backend-dev
+    restart: unless-stopped
+    ports:
+      - "5001:5001"
+    environment:
+      - DATABASE_URL=postgresql://${DB_USER:-threat_intel_user}:${DB_PASSWORD:-secure_password_123}@db:5432/${DB_NAME:-threat_intel_db}
+      - SHODAN_API_KEY=${SHODAN_API_KEY:-}
+      - FLASK_ENV=development
+      - FLASK_DEBUG=1
+    volumes:
+      - ./backend:/app  # Live reload for development
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - threat-intel-dev
+
+  # Frontend Web Service (development mode)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: threat-intel-frontend-dev
+    restart: unless-stopped
+    ports:
+      - "3000:3000"  # Vite dev server
+    environment:
+      - VITE_API_URL=http://localhost:5001
+    volumes:
+      - ./frontend:/app  # Live reload for development
+      - /app/node_modules  # Prevent overwriting node_modules
+    depends_on:
+      - backend
+    networks:
+      - threat-intel-dev
+
+volumes:
+  postgres_data_dev:
+    driver: local
+
+networks:
+  threat-intel-dev:
+    driver: bridge
