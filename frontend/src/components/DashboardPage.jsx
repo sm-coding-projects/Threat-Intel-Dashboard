@@ -1,31 +1,33 @@
 import React, { useState, useEffect } from 'react';
-import { getIPs, addIPsFromFile, addIPsFromText, deleteIP } from '../api';
+import { getIPs, addIPsFromFile, addIPsFromText, deleteIP, deleteIPs } from '../api';
 import { 
     TextField, Button, Table, TableBody, TableCell, 
     TableContainer, TableHead, TableRow, Paper, CircularProgress, 
     Alert, Grid, Typography, Card, CardContent, Box,
     Dialog, DialogTitle, DialogContent, DialogActions,
-    Tooltip, IconButton, Divider, Stack
+    Tooltip, IconButton, Divider, Stack, Chip, Checkbox
 } from '@mui/material';
-import { CloudUpload, Send, Error, Visibility, InfoOutlined, Delete, TrendingUp } from '@mui/icons-material';
+import { CloudUpload, Send, Error, Visibility, InfoOutlined, Delete, TrendingUp, CheckCircle, Warning, FileDownload } from '@mui/icons-material';
 import LoadingButton from './shared/LoadingButton';
+import ToastNotification from './shared/ToastNotification';
 
 const DashboardPage = () => {
     const [ips, setIps] = useState([]);
     const [textInput, setTextInput] = useState('');
     const [fileInput, setFileInput] = useState(null);
     const [loading, setLoading] = useState(false);
-    const [error, setError] = useState('');
+    const [notification, setNotification] = useState({ open: false, message: '', severity: '' });
     const [selectedIp, setSelectedIp] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [selected, setSelected] = useState([]);
 
     const fetchIps = async () => {
         try {
             const response = await getIPs();
-            setIps(response.data);
+            setIps(response.data.map(ip => ({ ...ip, status: 'Enriched' })));
         } catch (error) {
             console.error("Error fetching IPs:", error);
-            setError('Failed to fetch IPs. Please try again later.');
+            setNotification({ open: true, message: 'Failed to fetch IPs. Please try again later.', severity: 'error' });
         }
     };
 
@@ -36,18 +38,19 @@ const DashboardPage = () => {
     const handleTextSubmit = async () => {
         if (!textInput.trim()) return;
         setLoading(true);
-        setError('');
         try {
             const response = await addIPsFromText(textInput);
             setTextInput('');
             fetchIps();
             if (response.data.errors && response.data.errors.length > 0) {
-                setError(`Completed with some errors: ${response.data.errors.join(', ')}`);
+                setNotification({ open: true, message: `Completed with some errors: ${response.data.errors.join(', ')}`, severity: 'warning' });
+            } else {
+                setNotification({ open: true, message: 'Successfully added IPs!', severity: 'success' });
             }
         } catch (err) {
             console.error("Error submitting text IPs:", err);
             const errorMessage = err.response?.data?.error || 'An unknown error occurred.';
-            setError(`Failed to submit IPs: ${errorMessage}`);
+            setNotification({ open: true, message: `Failed to submit IPs: ${errorMessage}`, severity: 'error' });
         } finally {
             setLoading(false);
         }
@@ -60,19 +63,20 @@ const DashboardPage = () => {
     const handleFileSubmit = async () => {
         if (!fileInput) return;
         setLoading(true);
-        setError('');
         try {
             const response = await addIPsFromFile(fileInput);
             setFileInput(null);
             document.getElementById('file-input').value = null;
             fetchIps();
             if (response.data.errors && response.data.errors.length > 0) {
-                setError(`Completed with some errors: ${response.data.errors.join(', ')}`);
+                setNotification({ open: true, message: `Completed with some errors: ${response.data.errors.join(', ')}`, severity: 'warning' });
+            } else {
+                setNotification({ open: true, message: 'Successfully added IPs from file!', severity: 'success' });
             }
         } catch (err) {
             console.error("Error submitting file:", err);
             const errorMessage = err.response?.data?.error || 'An unknown error occurred.';
-            setError(`Failed to submit IPs from file: ${errorMessage}`);
+            setNotification({ open: true, message: `Failed to submit IPs from file: ${errorMessage}`, severity: 'error' });
         } finally {
             setLoading(false);
         }
@@ -95,15 +99,101 @@ const DashboardPage = () => {
 
         try {
             await deleteIP(ipId);
+            setNotification({ open: true, message: 'IP address deleted successfully.', severity: 'success' });
         } catch (error) {
             console.error("Error deleting IP:", error);
-            setError('Failed to delete IP. Please try again later.');
+            setNotification({ open: true, message: 'Failed to delete IP. Please try again later.', severity: 'error' });
             setIps(originalIps); // Revert optimistic update
         }
     };
 
+    const handleCloseNotification = (event, reason) => {
+        if (reason === 'clickaway') {
+            return;
+        }
+        setNotification({ ...notification, open: false });
+    };
+
+    const handleSelectAllClick = (event) => {
+        if (event.target.checked) {
+            const newSelecteds = ips.map((n) => n.id);
+            setSelected(newSelecteds);
+            return;
+        }
+        setSelected([]);
+    };
+
+    const handleClick = (event, id) => {
+        const selectedIndex = selected.indexOf(id);
+        let newSelected = [];
+
+        if (selectedIndex === -1) {
+            newSelected = newSelected.concat(selected, id);
+        } else if (selectedIndex === 0) {
+            newSelected = newSelected.concat(selected.slice(1));
+        } else if (selectedIndex === selected.length - 1) {
+            newSelected = newSelected.concat(selected.slice(0, -1));
+        } else if (selectedIndex > 0) {
+            newSelected = newSelected.concat(
+                selected.slice(0, selectedIndex),
+                selected.slice(selectedIndex + 1),
+            );
+        }
+        setSelected(newSelected);
+    };
+
+    const isSelected = (id) => selected.indexOf(id) !== -1;
+
+    const handleDeleteSelected = async () => {
+        const originalIps = [...ips];
+        const updatedIps = ips.filter(ip => !selected.includes(ip.id));
+        setIps(updatedIps);
+        try {
+            await deleteIPs(selected);
+            setNotification({ open: true, message: 'Selected IP addresses deleted successfully.', severity: 'success' });
+            setSelected([]);
+        } catch (error) {
+            console.error("Error deleting selected IPs:", error);
+            setNotification({ open: true, message: 'Failed to delete selected IPs. Please try again later.', severity: 'error' });
+            setIps(originalIps);
+        }
+    };
+
+    const handleExport = () => {
+        const headers = ["IP Address", "Hostname", "Country", "Organization", "ASN", "Open Ports", "Status"];
+        const csvContent = [
+            headers.join(","),
+            ...ips.map(ip => [
+                ip.ip_address,
+                `"${ip.hostname}"`,
+                ip.country,
+                `"${ip.org}"`,
+                ip.asn,
+                `"${ip.ports.join(', ')}"`,
+                ip.status
+            ].join(","))
+        ].join("\n");
+
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement("a");
+        if (link.href) {
+            URL.revokeObjectURL(link.href);
+        }
+        link.href = URL.createObjectURL(blob);
+        link.download = "ip_intelligence_export.csv";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
     return (
         <Box>
+            <ToastNotification 
+                open={notification.open} 
+                message={notification.message} 
+                severity={notification.severity} 
+                onClose={handleCloseNotification} 
+            />
             <Grid container spacing={3}>
                 <Grid item xs={12}>
                     <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -193,60 +283,112 @@ const DashboardPage = () => {
                         </CardContent>
                     </Card>
                 </Grid>
-                {error && (
-                    <Grid item xs={12}>
-                        <Alert severity="error" icon={<Error />}>{error}</Alert>
-                    </Grid>
-                )}
                 <Grid item xs={12}>
                     <Card>
                         <CardContent>
-                            <Typography variant="h6" gutterBottom>Enriched IP Addresses</Typography>
+                            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                                <Typography variant="h6" gutterBottom sx={{ mb: 0 }}>Enriched IP Addresses</Typography>
+                                <Box>
+                                    <Button 
+                                        variant="outlined"
+                                        startIcon={<FileDownload />}
+                                        onClick={handleExport}
+                                        sx={{ mr: 1 }}
+                                    >
+                                        Export CSV
+                                    </Button>
+                                    <Button 
+                                        variant="contained"
+                                        color="error"
+                                        startIcon={<Delete />}
+                                        disabled={selected.length === 0}
+                                        onClick={handleDeleteSelected}
+                                    >
+                                        Delete Selected
+                                    </Button>
+                                </Box>
+                            </Box>
                             <TableContainer>
                                 <Table>
                                     <TableHead>
                                         <TableRow>
+                                            <TableCell padding="checkbox">
+                                                <Checkbox
+                                                    indeterminate={selected.length > 0 && selected.length < ips.length}
+                                                    checked={ips.length > 0 && selected.length === ips.length}
+                                                    onChange={handleSelectAllClick}
+                                                    inputProps={{ 'aria-label': 'select all desserts' }}
+                                                />
+                                            </TableCell>
                                             <TableCell>IP Address</TableCell>
                                             <TableCell>Hostname</TableCell>
                                             <TableCell>Country</TableCell>
                                             <TableCell>Organization</TableCell>
                                             <TableCell>ASN</TableCell>
                                             <TableCell>Open Ports</TableCell>
+                                            <TableCell>Status</TableCell>
                                             <TableCell>Actions</TableCell>
                                         </TableRow>
                                     </TableHead>
                                     <TableBody>
-                                        {ips.length > 0 ? ips.map(ip => (
-                                            <TableRow key={ip.id} hover>
-                                                <TableCell>{ip.ip_address}</TableCell>
-                                                <TableCell>{ip.hostname}</TableCell>
-                                                <TableCell>{ip.country}</TableCell>
-                                                <TableCell>{ip.org}</TableCell>
-                                                <TableCell>{ip.asn}</TableCell>
-                                                <TableCell>{ip.ports.join(', ')}</TableCell>
-                                                <TableCell>
-                                                    <Box sx={{ display: 'flex', gap: 1 }}>
-                                                        <Button 
-                                                            variant="outlined" 
+                                        {ips.length > 0 ? ips.map((ip, index) => {
+                                            const isItemSelected = isSelected(ip.id);
+                                            const labelId = `enhanced-table-checkbox-${index}`;
+
+                                            return (
+                                                <TableRow 
+                                                    key={ip.id} 
+                                                    hover
+                                                    onClick={(event) => handleClick(event, ip.id)}
+                                                    role="checkbox"
+                                                    aria-checked={isItemSelected}
+                                                    tabIndex={-1}
+                                                    selected={isItemSelected}
+                                                >
+                                                    <TableCell padding="checkbox">
+                                                        <Checkbox
+                                                            checked={isItemSelected}
+                                                            inputProps={{ 'aria-labelledby': labelId }}
+                                                        />
+                                                    </TableCell>
+                                                    <TableCell component="th" id={labelId} scope="row" padding="none">{ip.ip_address}</TableCell>
+                                                    <TableCell>{ip.hostname}</TableCell>
+                                                    <TableCell>{ip.country}</TableCell>
+                                                    <TableCell>{ip.org}</TableCell>
+                                                    <TableCell>{ip.asn}</TableCell>
+                                                    <TableCell>{ip.ports.join(', ')}</TableCell>
+                                                    <TableCell>
+                                                        <Chip 
+                                                            icon={ip.status === 'Enriched' ? <CheckCircle /> : <Warning />}
+                                                            label={ip.status}
+                                                            color={ip.status === 'Enriched' ? 'success' : 'warning'}
                                                             size="small"
-                                                            onClick={() => handleViewDetails(ip)}
-                                                            startIcon={<Visibility />}
-                                                        >
-                                                            Details
-                                                        </Button>
-                                                        <IconButton 
-                                                            aria-label="delete"
-                                                            size="small"
-                                                            onClick={() => handleDelete(ip.id)}
-                                                        >
-                                                            <Delete />
-                                                        </IconButton>
-                                                    </Box>
-                                                </TableCell>
-                                            </TableRow>
-                                        )) : (
+                                                        />
+                                                    </TableCell>
+                                                    <TableCell>
+                                                        <Box sx={{ display: 'flex', gap: 1 }}>
+                                                            <Button 
+                                                                variant="outlined" 
+                                                                size="small"
+                                                                onClick={(e) => { e.stopPropagation(); handleViewDetails(ip); }}
+                                                                startIcon={<Visibility />}
+                                                            >
+                                                                Details
+                                                            </Button>
+                                                            <IconButton 
+                                                                aria-label="delete"
+                                                                size="small"
+                                                                onClick={(e) => { e.stopPropagation(); handleDelete(ip.id); }}
+                                                            >
+                                                                <Delete />
+                                                            </IconButton>
+                                                        </Box>
+                                                    </TableCell>
+                                                </TableRow>
+                                            );
+                                        }) : (
                                             <TableRow>
-                                                <TableCell colSpan={7} align="center">
+                                                <TableCell colSpan={9} align="center">
                                                     <Typography sx={{ p: 4, color: 'text.secondary' }}>
                                                         No IP data available. Add IPs to see results.
                                                     </Typography>

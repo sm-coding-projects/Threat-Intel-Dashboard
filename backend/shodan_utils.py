@@ -1,6 +1,7 @@
 import os
 import shodan
 import ipaddress
+import json
 
 def get_shodan_api(api_key=None):
     """Initializes and returns the Shodan API client."""

@@ -122,6 +122,27 @@ def delete_ip(ip_id):
     
     return jsonify({'message': 'IP address deleted successfully'}), 200
 
+@app.route('/api/ips/bulk-delete', methods=['POST'])
+def delete_ips():
+    """Deletes multiple IP addresses from the database."""
+    data = request.get_json()
+    ip_ids = data.get('ids')
+    if not ip_ids:
+        return jsonify({'error': 'No IP IDs provided'}), 400
+
+    try:
+        # First, delete the associated ports
+        Port.query.filter(Port.ip_id.in_(ip_ids)).delete(synchronize_session=False)
+        
+        # Then, delete the IP addresses
+        num_deleted = IPAddress.query.filter(IPAddress.id.in_(ip_ids)).delete(synchronize_session=False)
+        
+        db.session.commit()
+        return jsonify({'message': f'{num_deleted} IP addresses deleted successfully'}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'An error occurred: {str(e)}'}), 500
+
 @app.route('/api/health', methods=['GET'])
 def health_check():
     """Health check endpoint for Docker health checks."""

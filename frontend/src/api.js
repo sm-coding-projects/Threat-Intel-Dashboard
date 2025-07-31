@@ -38,3 +38,7 @@ export const validateApiKey = (apiKey) => {
 export const deleteIP = (ipId) => {
     return axios.delete(`${API_URL}/ips/${ipId}`);
 };
+
+export const deleteIPs = (ipIds) => {
+    return axios.post(`${API_URL}/ips/bulk-delete`, { ids: ipIds });
+};

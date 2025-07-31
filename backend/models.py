@@ -12,7 +12,7 @@ class IPAddress(db.Model):
     city = db.Column(db.String(100))
     org = db.Column(db.String(255))
     os = db.Column(db.String(100))
-    hostname = db.Column(db.String(255))
+    hostname = db.Column(db.String(1024))
     isp = db.Column(db.String(255))
     asn = db.Column(db.String(100))
     last_shodan_update = db.Column(db.String(100))
