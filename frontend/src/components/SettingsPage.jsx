@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { validateApiKey } from '../api';
+import React, { useState, useEffect } from 'react';
+import { validateApiKey, getApiInfo } from '../api';
 import {
     TextField, Button, CircularProgress,
     Alert, Grid, Typography, Card, CardContent, Box,
@@ -48,7 +48,8 @@ const ApiKeyCard = ({
     error,
     success,
     placeholder = "Enter API Key",
-    status = "inactive"
+    status = "inactive",
+    apiInfo
 }) => {
     const getStatusColor = () => {
         switch (status) {
@@ -115,6 +116,13 @@ const ApiKeyCard = ({
                         Delete
                     </Button>
                 </Stack>
+                {apiInfo && (
+                    <Box sx={{ mt: 2 }}>
+                        <Typography variant="body2">Plan: {apiInfo.plan}</Typography>
+                        <Typography variant="body2">Query Credits: {apiInfo.query_credits}</Typography>
+                        <Typography variant="body2">Scan Credits: {apiInfo.scan_credits}</Typography>
+                    </Box>
+                )}
                 {error && <Alert severity="error" icon={<Error />} sx={{ mt: 2 }}>{error}</Alert>}
                 {success && <Alert severity="success" icon={<CheckCircle />} sx={{ mt: 2 }}>{success}</Alert>}
             </CardContent>
@@ -151,6 +159,22 @@ const SettingsPage = () => {
     const [virusTotalError, setVirusTotalError] = useState('');
     const [abuseIPDBSuccess, setAbuseIPDBSuccess] = useState('');
     const [abuseIPDBError, setAbuseIPDBError] = useState('');
+    const [apiInfo, setApiInfo] = useState(null);
+
+    useEffect(() => {
+        const fetchApiInfo = async () => {
+            try {
+                const response = await getApiInfo();
+                setApiInfo(response.data);
+            } catch (error) {
+                console.error("Error fetching API info:", error);
+            }
+        };
+
+        if (localStorage.getItem('shodanApiKey')) {
+            fetchApiInfo();
+        }
+    }, []);
 
     const handleTabChange = (event, newValue) => {
         setTabValue(newValue);
@@ -427,6 +451,7 @@ const SettingsPage = () => {
                             success={shodanSuccess}
                             placeholder="Enter Shodan API Key"
                             status={getShodanStatus()}
+                            apiInfo={apiInfo}
                         />
 
                         <ApiKeyCard

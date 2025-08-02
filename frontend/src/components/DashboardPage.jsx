@@ -10,6 +10,7 @@ import {
 import { CloudUpload, Send, Error, Visibility, InfoOutlined, Delete, TrendingUp, CheckCircle, Warning, FileDownload } from '@mui/icons-material';
 import LoadingButton from './shared/LoadingButton';
 import ToastNotification from './shared/ToastNotification';
+import StreamingProgress from './shared/StreamingProgress';
 
 const DashboardPage = () => {
     const [ips, setIps] = useState([]);
@@ -20,6 +21,7 @@ const DashboardPage = () => {
     const [selectedIp, setSelectedIp] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selected, setSelected] = useState([]);
+    const [streamingIps, setStreamingIps] = useState([]);
 
     const fetchIps = async () => {
         try {
@@ -38,20 +40,40 @@ const DashboardPage = () => {
     const handleTextSubmit = async () => {
         if (!textInput.trim()) return;
         setLoading(true);
+        setStreamingIps([]);
         try {
-            const response = await addIPsFromText(textInput);
-            setTextInput('');
-            fetchIps();
-            if (response.data.errors && response.data.errors.length > 0) {
-                setNotification({ open: true, message: `Completed with some errors: ${response.data.errors.join(', ')}`, severity: 'warning' });
-            } else {
-                setNotification({ open: true, message: 'Successfully added IPs!', severity: 'success' });
-            }
-        } catch (err) {
-            console.error("Error submitting text IPs:", err);
-            const errorMessage = err.response?.data?.error || 'An unknown error occurred.';
-            setNotification({ open: true, message: `Failed to submit IPs: ${errorMessage}`, severity: 'error' });
-        } finally {
+            const eventSource = await addIPsFromText(textInput);
+
+            eventSource.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.error) {
+                    setNotification({ open: true, message: data.error, severity: 'error' });
+                    eventSource.close();
+                    setLoading(false);
+                    return;
+                }
+
+                setStreamingIps(prevIps => [...prevIps, data]);
+
+                if (data.status === 'enriched') {
+                    fetchIps();
+                }
+            };
+
+            eventSource.onerror = (err) => {
+                console.error("EventSource failed:", err);
+                setNotification({ open: true, message: 'An error occurred while streaming data.', severity: 'error' });
+                eventSource.close();
+                setLoading(false);
+            };
+
+            eventSource.onopen = () => {
+                setLoading(false);
+                setTextInput('');
+            };
+        } catch (error) {
+            console.error("Error streaming IPs:", error);
+            setNotification({ open: true, message: 'Error streaming IPs.', severity: 'error' });
             setLoading(false);
         }
     };
@@ -63,21 +85,41 @@ const DashboardPage = () => {
     const handleFileSubmit = async () => {
         if (!fileInput) return;
         setLoading(true);
+        setStreamingIps([]);
         try {
-            const response = await addIPsFromFile(fileInput);
-            setFileInput(null);
-            document.getElementById('file-input').value = null;
-            fetchIps();
-            if (response.data.errors && response.data.errors.length > 0) {
-                setNotification({ open: true, message: `Completed with some errors: ${response.data.errors.join(', ')}`, severity: 'warning' });
-            } else {
-                setNotification({ open: true, message: 'Successfully added IPs from file!', severity: 'success' });
-            }
-        } catch (err) {
-            console.error("Error submitting file:", err);
-            const errorMessage = err.response?.data?.error || 'An unknown error occurred.';
-            setNotification({ open: true, message: `Failed to submit IPs from file: ${errorMessage}`, severity: 'error' });
-        } finally {
+            const eventSource = await addIPsFromFile(fileInput);
+
+            eventSource.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.error) {
+                    setNotification({ open: true, message: data.error, severity: 'error' });
+                    eventSource.close();
+                    setLoading(false);
+                    return;
+                }
+
+                setStreamingIps(prevIps => [...prevIps, data]);
+
+                if (data.status === 'enriched') {
+                    fetchIps();
+                }
+            };
+
+            eventSource.onerror = (err) => {
+                console.error("EventSource failed:", err);
+                setNotification({ open: true, message: 'An error occurred while streaming data.', severity: 'error' });
+                eventSource.close();
+                setLoading(false);
+            };
+
+            eventSource.onopen = () => {
+                setLoading(false);
+                setFileInput(null);
+                document.getElementById('file-input').value = null;
+            };
+        } catch (error) {
+            console.error("Error reading file:", error);
+            setNotification({ open: true, message: 'Error reading file.', severity: 'error' });
             setLoading(false);
         }
     };
@@ -232,6 +274,7 @@ const DashboardPage = () => {
                             >
                                 Submit IPs
                             </LoadingButton>
+                            <StreamingProgress streamingIps={streamingIps} />
                         </CardContent>
                     </Card>
                 </Grid>
@@ -280,6 +323,7 @@ const DashboardPage = () => {
                             >
                                 Upload & Process
                             </LoadingButton>
+                            <StreamingProgress streamingIps={streamingIps} />
                         </CardContent>
                     </Card>
                 </Grid>

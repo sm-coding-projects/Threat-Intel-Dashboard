@@ -1,7 +1,8 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response, stream_with_context
+import json
 from flask_cors import CORS
 from models import db, IPAddress, Port
-from shodan_utils import get_shodan_api, enrich_ip, validate_api_key
+from shodan_utils import get_shodan_api, enrich_ip, validate_api_key, get_api_info
 import os
 import ipaddress
 import datetime
@@ -30,84 +31,99 @@ def validate_key():
     is_valid = validate_api_key(api_key)
     return jsonify({'is_valid': is_valid})
 
+@app.route('/api/api-info', methods=['GET'])
+def get_shodan_api_info():
+    """Returns Shodan API plan information."""
+    api_key = request.headers.get('X-API-Key')
+    if not api_key or not validate_api_key(api_key):
+        return jsonify({'error': 'Invalid or missing API key'}), 401
+
+    try:
+        api = get_shodan_api(api_key)
+        info = get_api_info(api)
+        return jsonify(info)
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+
 @app.route('/api/ips', methods=['GET'])
 def get_all_ips():
     """Returns all IPs from the database."""
     ips = IPAddress.query.all()
     return jsonify([ip.to_dict() for ip in ips])
 
-@app.route('/api/ips', methods=['POST'])
-def add_ips():
-    """Adds and enriches IPs from a text list or file."""
-    api_key = request.headers.get('X-API-Key')
-    if not api_key or not validate_api_key(api_key):
-        return jsonify({'error': 'Invalid or missing API key'}), 401
 
-    if 'file' in request.files:
-        content = request.files['file'].read().decode('utf-8')
-        ip_list = content.splitlines()
-    else:
-        data = request.get_json()
-        ip_list = data.get('ips', '').split()
 
-    if not ip_list:
-        return jsonify({'error': 'No IPs provided'}), 400
 
-    try:
-        api = get_shodan_api(api_key)
-    except ValueError as e:
-        return jsonify({'error': str(e)}), 400
-        
-    enriched_ips = []
-    errors = []
+@app.route('/api/ips/stream', methods=['POST'])
+def stream_ips():
+    def generate():
+        api_key = request.headers.get('X-API-Key')
+        if not api_key or not validate_api_key(api_key):
+            yield f"data: {json.dumps({'error': 'Invalid or missing API key'})}\n\n"
+            return
 
-    for ip_str in ip_list:
-        ip_str = ip_str.strip()
-        if not ip_str:
-            continue
+        if 'file' in request.files:
+            content = request.files['file'].read().decode('utf-8')
+            ip_list = content.splitlines()
+        else:
+            data = request.get_json()
+            ip_list = data.get('ips', '').split()
+
+        if not ip_list:
+            yield f"data: {json.dumps({'error': 'No IPs provided'})}\n\n"
+            return
 
         try:
-            ipaddress.ip_address(ip_str)
-        except ValueError:
-            errors.append(f"Skipping invalid input: '{ip_str}' is not a valid IP address.")
-            continue
+            api = get_shodan_api(api_key)
+        except ValueError as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            return
+
+        for ip_str in ip_list:
+            ip_str = ip_str.strip()
+            if not ip_str:
+                continue
             
-        existing_ip = IPAddress.query.filter_by(ip_address=ip_str).first()
-        if existing_ip:
-            db.session.delete(existing_ip)
+            yield f"data: {json.dumps({'status': 'processing', 'ip_address': ip_str})}\n\n"
+
+            try:
+                ipaddress.ip_address(ip_str)
+            except ValueError:
+                yield f"data: {json.dumps({'status': 'error', 'ip_address': ip_str, 'message': 'Invalid IP address'})}\n\n"
+                continue
+            
+            existing_ip = IPAddress.query.filter_by(ip_address=ip_str).first()
+            if existing_ip:
+                db.session.delete(existing_ip)
+                db.session.commit()
+
+            data = enrich_ip(api, ip_str)
+            if 'error' in data:
+                yield f"data: {json.dumps({'status': 'error', 'ip_address': ip_str, 'message': data['error']})}\n\n"
+                continue
+
+            new_ip = IPAddress(
+                ip_address=data['ip_address'],
+                country=data['country'],
+                city=data['city'],
+                org=data['org'],
+                os=data['os'],
+                hostname=data['hostname'],
+                isp=data['isp'],
+                asn=data['asn'],
+                last_shodan_update=data['last_shodan_update'],
+                vulns=data['vulns'],
+                last_updated=datetime.datetime.utcnow()
+            )
+            
+            for port_num in data['ports']:
+                new_ip.ports.append(Port(port_number=port_num))
+            
+            db.session.add(new_ip)
             db.session.commit()
+            yield f"data: {json.dumps({'status': 'enriched', 'ip': new_ip.to_dict()})}\n\n"
 
-        data = enrich_ip(api, ip_str)
-        if 'error' in data:
-            errors.append(f"Could not enrich {ip_str}: {data['error']}")
-            continue
-
-        new_ip = IPAddress(
-            ip_address=data['ip_address'],
-            country=data['country'],
-            city=data['city'],
-            org=data['org'],
-            os=data['os'],
-            hostname=data['hostname'],
-            isp=data['isp'],
-            asn=data['asn'],
-            last_shodan_update=data['last_shodan_update'],
-            vulns=data['vulns'],
-            last_updated=datetime.datetime.utcnow()
-        )
-        
-        for port_num in data['ports']:
-            new_ip.ports.append(Port(port_number=port_num))
-        
-        db.session.add(new_ip)
-        enriched_ips.append(new_ip.to_dict())
-
-    db.session.commit()
-    
-    if errors:
-        return jsonify({'enriched_ips': enriched_ips, 'errors': errors}), 207
-        
-    return jsonify(enriched_ips), 201
+    return Response(stream_with_context(generate()), mimetype='text/event-stream')
 
 
 @app.route('/api/ips/<int:ip_id>', methods=['DELETE'])

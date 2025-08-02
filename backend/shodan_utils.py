@@ -40,6 +40,8 @@ def enrich_ip(api, ip_str):
             'ports': host.get('ports', [])
         }
     except shodan.APIError as e:
+        if "No information available for that IP." in str(e):
+            return {'error': 'Not found', 'ip_address': ip_str}
         print(f"Shodan API error for {ip_str}: {e}")
         return {'error': str(e), 'ip_address': ip_str}
     except ValueError:
@@ -48,3 +50,15 @@ def enrich_ip(api, ip_str):
     except Exception as e:
         print(f"An unexpected error occurred for {ip_str}: {e}")
         return {'error': 'Unexpected error', 'ip_address': ip_str}
+
+def get_api_info(api):
+    """Retrieves API plan information."""
+    try:
+        info = api.info()
+        return {
+            'plan': info.get('plan', 'N/A'),
+            'query_credits': info.get('query_credits', 'N/A'),
+            'scan_credits': info.get('scan_credits', 'N/A')
+        }
+    except shodan.APIError as e:
+        return {'error': str(e)}
