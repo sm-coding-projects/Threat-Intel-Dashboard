@@ -85,6 +85,10 @@ deploy_services() {
     print_status "Stopping existing containers..."
     docker-compose down --remove-orphans 2>/dev/null || true
     
+    # Ensure frontend dependencies are in sync
+    print_status "Updating frontend dependencies..."
+    (cd frontend && npm install)
+    
     # Build and start services
     print_status "Building Docker images..."
     docker-compose build --no-cache
