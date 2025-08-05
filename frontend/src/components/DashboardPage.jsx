@@ -22,6 +22,40 @@ const DashboardPage = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selected, setSelected] = useState([]);
     const [streamingIps, setStreamingIps] = useState([]);
+    const [filters, setFilters] = useState({
+        ip_address: '',
+        hostname: '',
+        country: '',
+        org: '',
+        asn: '',
+        ports: '',
+        status: '',
+    });
+
+    const handleFilterChange = (e) => {
+        const { name, value } = e.target;
+        setFilters(prevFilters => ({
+            ...prevFilters,
+            [name]: value,
+        }));
+    };
+
+    const filteredIps = ips.filter(ip => {
+        return Object.keys(filters).every(key => {
+            const filterValue = filters[key].toLowerCase();
+            if (!filterValue) return true;
+
+            if (key === 'ports') {
+                return ip.ports.some(port => port.toString().toLowerCase().includes(filterValue));
+            }
+            
+            if (ip[key]) {
+                return ip[key].toString().toLowerCase().includes(filterValue);
+            }
+
+            return false;
+        });
+    });
 
     const fetchIps = async () => {
         try {
@@ -158,7 +192,7 @@ const DashboardPage = () => {
 
     const handleSelectAllClick = (event) => {
         if (event.target.checked) {
-            const newSelecteds = ips.map((n) => n.id);
+            const newSelecteds = filteredIps.map((n) => n.id);
             setSelected(newSelecteds);
             return;
         }
@@ -358,8 +392,8 @@ const DashboardPage = () => {
                                         <TableRow>
                                             <TableCell padding="checkbox">
                                                 <Checkbox
-                                                    indeterminate={selected.length > 0 && selected.length < ips.length}
-                                                    checked={ips.length > 0 && selected.length === ips.length}
+                                                    indeterminate={selected.length > 0 && selected.length < filteredIps.length}
+                                                    checked={filteredIps.length > 0 && selected.length === filteredIps.length}
                                                     onChange={handleSelectAllClick}
                                                     inputProps={{ 'aria-label': 'select all desserts' }}
                                                 />
@@ -373,9 +407,20 @@ const DashboardPage = () => {
                                             <TableCell>Status</TableCell>
                                             <TableCell>Actions</TableCell>
                                         </TableRow>
+                                        <TableRow>
+                                            <TableCell />
+                                            <TableCell><TextField name="ip_address" value={filters.ip_address} onChange={handleFilterChange} variant="standard" fullWidth /></TableCell>
+                                            <TableCell><TextField name="hostname" value={filters.hostname} onChange={handleFilterChange} variant="standard" fullWidth /></TableCell>
+                                            <TableCell><TextField name="country" value={filters.country} onChange={handleFilterChange} variant="standard" fullWidth /></TableCell>
+                                            <TableCell><TextField name="org" value={filters.org} onChange={handleFilterChange} variant="standard" fullWidth /></TableCell>
+                                            <TableCell><TextField name="asn" value={filters.asn} onChange={handleFilterChange} variant="standard" fullWidth /></TableCell>
+                                            <TableCell><TextField name="ports" value={filters.ports} onChange={handleFilterChange} variant="standard" fullWidth /></TableCell>
+                                            <TableCell><TextField name="status" value={filters.status} onChange={handleFilterChange} variant="standard" fullWidth /></TableCell>
+                                            <TableCell />
+                                        </TableRow>
                                     </TableHead>
                                     <TableBody>
-                                        {ips.length > 0 ? ips.map((ip, index) => {
+                                        {filteredIps.length > 0 ? filteredIps.map((ip, index) => {
                                             const isItemSelected = isSelected(ip.id);
                                             const labelId = `enhanced-table-checkbox-${index}`;
 
