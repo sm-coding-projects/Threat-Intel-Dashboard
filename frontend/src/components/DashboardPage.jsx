@@ -5,9 +5,9 @@ import {
     TableContainer, TableHead, TableRow, Paper, CircularProgress, 
     Alert, Grid, Typography, Card, CardContent, Box,
     Dialog, DialogTitle, DialogContent, DialogActions,
-    Tooltip, IconButton, Divider, Stack, Chip, Checkbox
+    Tooltip, IconButton, Divider, Stack, Chip, Checkbox, Menu, MenuItem, ListItemText, Select, FormControl, InputLabel
 } from '@mui/material';
-import { CloudUpload, Send, Error, Visibility, InfoOutlined, Delete, TrendingUp, CheckCircle, Warning, FileDownload } from '@mui/icons-material';
+import { CloudUpload, Send, Error, Visibility, InfoOutlined, Delete, TrendingUp, CheckCircle, Warning, FileDownload, FilterList } from '@mui/icons-material';
 import LoadingButton from './shared/LoadingButton';
 import ToastNotification from './shared/ToastNotification';
 import StreamingProgress from './shared/StreamingProgress';
@@ -22,40 +22,88 @@ const DashboardPage = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selected, setSelected] = useState([]);
     const [streamingIps, setStreamingIps] = useState([]);
-    const [filters, setFilters] = useState({
-        ip_address: '',
-        hostname: '',
-        country: '',
-        org: '',
-        asn: '',
-        ports: '',
-        status: '',
-    });
+    const [filters, setFilters] = useState({});
+    const [filterAnchorEl, setFilterAnchorEl] = useState(null);
+    const [filterColumn, setFilterColumn] = useState('');
+    const [filterSearch, setFilterSearch] = useState('');
 
-    const handleFilterChange = (e) => {
-        const { name, value } = e.target;
-        setFilters(prevFilters => ({
-            ...prevFilters,
-            [name]: value,
-        }));
+    const handleFilterMenuOpen = (event) => {
+        setFilterAnchorEl(event.currentTarget);
     };
+
+    const handleFilterMenuClose = () => {
+        setFilterAnchorEl(null);
+        setFilterColumn('');
+        setFilterSearch('');
+    };
+
+    const handleFilterColumnChange = (event) => {
+        setFilterColumn(event.target.value);
+        setFilterSearch('');
+    };
+
+    const handleFilterOptionToggle = (option) => {
+        setFilters(prevFilters => {
+            const currentOptions = prevFilters[filterColumn] || [];
+            const newOptions = currentOptions.includes(option)
+                ? currentOptions.filter(item => item !== option)
+                : [...currentOptions, option];
+            
+            if (newOptions.length === 0) {
+                const { [filterColumn]: _, ...rest } = prevFilters;
+                return rest;
+            }
+
+            return {
+                ...prevFilters,
+                [filterColumn]: newOptions,
+            };
+        });
+    };
+
+    const getUniqueOptions = (column) => {
+        if (!column) return [];
+        const allValues = ips.flatMap(ip => {
+            if (column === 'ports') return ip.ports;
+            return ip[column] || [];
+        });
+        return [...new Set(allValues)].sort();
+    };
+
+    const filteredOptions = getUniqueOptions(filterColumn).filter(option => 
+        option.toString().toLowerCase().includes(filterSearch.toLowerCase())
+    );
 
     const filteredIps = ips.filter(ip => {
         return Object.keys(filters).every(key => {
-            const filterValue = filters[key].toLowerCase();
-            if (!filterValue) return true;
-
-            if (key === 'ports') {
-                return ip.ports.some(port => port.toString().toLowerCase().includes(filterValue));
-            }
+            if (filters[key].length === 0) return true;
             
+            if (key === 'ports') {
+                return ip.ports.some(port => filters[key].includes(port));
+            }
+
             if (ip[key]) {
-                return ip[key].toString().toLowerCase().includes(filterValue);
+                return filters[key].includes(ip[key]);
             }
 
             return false;
         });
     });
+
+    const handleRemoveFilter = (filterKey, value) => {
+        setFilters(prevFilters => {
+            const newOptions = prevFilters[filterKey].filter(item => item !== value);
+            if (newOptions.length === 0) {
+                const { [filterKey]: _, ...rest } = prevFilters;
+                return rest;
+            }
+            return {
+                ...prevFilters,
+                [filterKey]: newOptions,
+            };
+        });
+    };
+
 
     const fetchIps = async () => {
         try {
@@ -367,6 +415,14 @@ const DashboardPage = () => {
                             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                                 <Typography variant="h6" gutterBottom sx={{ mb: 0 }}>Enriched IP Addresses</Typography>
                                 <Box>
+                                    <Button
+                                        variant="outlined"
+                                        startIcon={<FilterList />}
+                                        onClick={handleFilterMenuOpen}
+                                        sx={{ mr: 1 }}
+                                    >
+                                        Filter
+                                    </Button>
                                     <Button 
                                         variant="outlined"
                                         startIcon={<FileDownload />}
@@ -386,6 +442,60 @@ const DashboardPage = () => {
                                     </Button>
                                 </Box>
                             </Box>
+                            <Menu
+                                anchorEl={filterAnchorEl}
+                                open={Boolean(filterAnchorEl)}
+                                onClose={handleFilterMenuClose}
+                                PaperProps={{ style: { width: 350, maxHeight: 400 } }}
+                            >
+                                <Box sx={{ p: 2 }}>
+                                    <FormControl fullWidth size="small">
+                                        <InputLabel>Column</InputLabel>
+                                        <Select
+                                            value={filterColumn}
+                                            label="Column"
+                                            onChange={handleFilterColumnChange}
+                                        >
+                                            <MenuItem value="ip_address">IP Address</MenuItem>
+                                            <MenuItem value="hostname">Hostname</MenuItem>
+                                            <MenuItem value="country">Country</MenuItem>
+                                            <MenuItem value="org">Organization</MenuItem>
+                                            <MenuItem value="asn">ASN</MenuItem>
+                                            <MenuItem value="ports">Open Ports</MenuItem>
+                                            <MenuItem value="status">Status</MenuItem>
+                                        </Select>
+                                    </FormControl>
+                                    {filterColumn && (
+                                        <TextField
+                                            fullWidth
+                                            variant="standard"
+                                            placeholder="Search options..."
+                                            value={filterSearch}
+                                            onChange={(e) => setFilterSearch(e.target.value)}
+                                            sx={{ mt: 1 }}
+                                        />
+                                    )}
+                                </Box>
+                                <Divider />
+                                {filteredOptions.map(option => (
+                                    <MenuItem key={option} onClick={() => handleFilterOptionToggle(option)}>
+                                        <Checkbox checked={filters[filterColumn]?.includes(option) || false} />
+                                        <ListItemText primary={option} />
+                                    </MenuItem>
+                                ))}
+                            </Menu>
+                            <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap' }}>
+                                {Object.entries(filters).map(([key, values]) => 
+                                    values.map(value => (
+                                        <Chip 
+                                            key={`${key}-${value}`}
+                                            label={`${key}: ${value}`}
+                                            onDelete={() => handleRemoveFilter(key, value)}
+                                            sx={{ mb: 0.5 }}
+                                        />
+                                    ))
+                                )}
+                            </Stack>
                             <TableContainer>
                                 <Table>
                                     <TableHead>
@@ -406,17 +516,6 @@ const DashboardPage = () => {
                                             <TableCell>Open Ports</TableCell>
                                             <TableCell>Status</TableCell>
                                             <TableCell>Actions</TableCell>
-                                        </TableRow>
-                                        <TableRow>
-                                            <TableCell />
-                                            <TableCell><TextField name="ip_address" value={filters.ip_address} onChange={handleFilterChange} variant="standard" fullWidth /></TableCell>
-                                            <TableCell><TextField name="hostname" value={filters.hostname} onChange={handleFilterChange} variant="standard" fullWidth /></TableCell>
-                                            <TableCell><TextField name="country" value={filters.country} onChange={handleFilterChange} variant="standard" fullWidth /></TableCell>
-                                            <TableCell><TextField name="org" value={filters.org} onChange={handleFilterChange} variant="standard" fullWidth /></TableCell>
-                                            <TableCell><TextField name="asn" value={filters.asn} onChange={handleFilterChange} variant="standard" fullWidth /></TableCell>
-                                            <TableCell><TextField name="ports" value={filters.ports} onChange={handleFilterChange} variant="standard" fullWidth /></TableCell>
-                                            <TableCell><TextField name="status" value={filters.status} onChange={handleFilterChange} variant="standard" fullWidth /></TableCell>
-                                            <TableCell />
                                         </TableRow>
                                     </TableHead>
                                     <TableBody>
